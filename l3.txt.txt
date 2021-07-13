@@ -1,0 +1,215 @@
+drop database if exists vk;
+
+create database vk;
+
+use vk;
+
+show tables;
+
+create table if not exists users(
+	id BIGINT unsigned auto_increment primary key,
+	first_name VARCHAR(145) not null,
+	last_name VARCHAR(145) not null,
+	likes_p
+	email VARCHAR(145) not null UNIQUE,
+	phone CHAR(11) not null,
+	password_hash CHAR(65) DEFAULT NULL,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, -- NOW()
+	INDEX (phone),
+	INDEX (email)
+
+);
+
+INSERT INTO users VALUES (DEFAULT, 'Petya', 'Petukhov', 'petya@mail.com', '89212223334', DEFAULT, DEFAULT);
+INSERT INTO users VALUES (DEFAULT, 'Vasya', 'Vasilkov', 'vasya@mail.com', '89212023334', DEFAULT, DEFAULT);
+
+select * from users; 
+
+describe users;
+
+show create table users;
+
+create table profiles(
+	user_id BIGINT unsigned not null primary key,
+	gender enum('f','m','x') not null,
+	birthday DATE not null,
+	photo_id INT unsigned,
+	city VARCHAR(130),
+	country VARCHAR(130),
+	foreign key (user_id) references users(id) 
+);
+
+INSERT INTO profiles VALUES (1, 'm', '1997-12-01', NULL, 'Moscow', 'Russia'); 
+INSERT INTO profiles VALUES (2, 'm', '1988-11-02', NULL, 'Moscow', 'Russia');
+
+
+INSERT INTO profiles VALUES (3, 'm', '1988-11-02', NULL, 'Moscow', 'Russia'); 
+
+select * from profiles;
+
+create table messages(
+	id SERIAL primary key,
+	from_user_id BIGINT unsigned not null,
+	to_user_id BIGINT unsigned not null,
+	txt TEXT not null,
+	is_dedlivered BOOLEAN default false,
+	CREATED_at DATETIME not null default NOW(),
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT "Время обновления строки",
+	INDEX messages_from_user_id_idx (from_user_id),
+	INDEX messages_to_user_id_idx (to_user_id),
+	CONSTRAINT fk_messages_from_user_id FOREIGN KEY (from_user_id) REFERENCES users (id),
+	CONSTRAINT fk_messages_to_user_id FOREIGN KEY (to_user_id) REFERENCES users (id)
+	
+);
+
+describe messages;
+
+INSERT INTO messages VALUES (DEFAULT, 1, 2, 'Hi!', 1, DEFAULT, DEFAULT); -- сообщение от Пети к Васе номер 1
+INSERT INTO messages VALUES (DEFAULT, 1, 2, 'Vasya!', 1, DEFAULT, DEFAULT); -- сообщение от Пети к Васе номер 2
+INSERT INTO messages VALUES (DEFAULT, 2, 1, 'Hi, Petya', 1, DEFAULT, DEFAULT); -- сообщение от Пети к Васе номер 2
+
+select * from messages;
+
+CREATE TABLE friend_requests(
+	from_user_id BIGINT UNSIGNED NOT NULL,
+	to_user_id BIGINT UNSIGNED NOT NULL,
+	accepted BOOLEAN DEFAULT FALSE,
+	PRIMARY KEY(from_user_id, to_user_id),
+	INDEX friend_requests_from_user_id_idx (from_user_id),
+	INDEX friend_requests_to_user_id_idx (to_user_id),
+	CONSTRAINT fk_friend_requests_from_user_id FOREIGN KEY (from_user_id) REFERENCES users (id),
+	CONSTRAINT fk_friend_requests_to_user_id FOREIGN KEY (to_user_id) REFERENCES users (id)
+);
+
+INSERT INTO friend_requests (from_user_id, to_user_id) VALUES (2, 1);
+INSERT INTO friend_requests (from_user_id, to_user_id) VALUES (3, 1);
+
+CREATE TABLE communities(
+	id SERIAL PRIMARY KEY,
+	name VARCHAR(150) NOT NULL,
+	description VARCHAR(255),
+	admin_id BIGINT UNSIGNED NOT NULL,
+	KEY (admin_id),
+	FOREIGN KEY (admin_id) REFERENCES users(id)
+);
+
+
+INSERT INTO communities VALUES (DEFAULT, 'Number1', 'I am number one', 1);
+INSERT INTO communities VALUES (DEFAULT, 'Number2', 'I am number two', 1);
+
+SELECT * FROM communities;
+
+CREATE TABLE communities_users(
+	community_id BIGINT UNSIGNED NOT NULL,
+	user_id BIGINT UNSIGNED NOT NULL,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY(community_id, user_id),
+	KEY (community_id),
+	KEY (user_id),
+	FOREIGN KEY (community_id) REFERENCES communities (id),
+	FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+
+INSERT INTO communities_users VALUES (1, 2, DEFAULT);
+
+SELECT * FROM communities_users;
+
+CREATE TABLE media_types(
+	id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+	name VARCHAR(50) NOT NULL UNIQUE
+);
+
+-- Добавим типы в каталог
+INSERT INTO media_types VALUES (DEFAULT, 'изображение');
+INSERT INTO media_types VALUES (DEFAULT, 'музыка');
+INSERT INTO media_types VALUES (DEFAULT, 'документ');
+
+SELECT * FROM media_types;
+
+/*
+ * 9. Создадим таблицу всех медиафайлов.
+ * 
+ * Сценарий: Петя добавляет фотографию.
+ * 
+ * Петя может добавить много различных медиафайлов, однако у медиафайла может быть только один автор 
+ * (тот, кто его добавил).
+ * Связь от одного (пользователя) к многим (медиафайлам).
+ * 
+ * Что нам необходимо хранить для медиафайла? Его айди, создателя, тип, название, размер, дату добавления.
+ * 
+ * Ссылку на создателя (пользователя) создаем по аналогии с ранее созданными таблицами, добавляем индекс для
+ * быстрого поиска медиафайлов пользователя и foreign key.
+ * 
+ * Также необходимо как-то хранить тип медиа-файла. Можно хранить название типа медиафайла, например, "изображение",
+ * "музыка", "документ". Однако, названия типов медиафайлов у нас уже хранятся в нашем каталоге media_types и это будет
+ * дублирование данных. Так мы можем хранить не название типа, а ссылку на название типа в каталоге (то есть id типа 
+ * медиафайла из таблицы media_types).
+ * 
+ * У каждого типа медиафайла может быть множество медиафайлов (тип "изображение" может быть у множества медиафайлов),
+ * однако у медиафайла может быть только один тип (фотография1 имеет только один тип - "изображение").
+ * Так это связь от одного (типа) к многим (медиафайлам).
+ * 
+ * Создаем колонку media_types_id, где храним id типа из media_types. Создаем foreign key от media_types_id
+ * к media_types (id). Индекс не создаем, так как типов медиафайлов будет мало, и индекс будет плохо работать
+ * по такой колонке с часто повторяющимися значениями. 
+ * 
+ * Так в данной таблице у нас получилось две разных связи от одного к многим, которые не связаны между собой.
+*/
+CREATE TABLE media (
+	id SERIAL PRIMARY KEY,
+	user_id BIGINT UNSIGNED NOT NULL,
+	media_types_id INT UNSIGNED NOT NULL,
+	likes_m_id INT unsigned not null,
+	file_name VARCHAR(255) COMMENT '/files/folder/img.png',
+	file_size BIGINT UNSIGNED,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	KEY (media_types_id),
+	KEY (user_id),
+	FOREIGN KEY (media_types_id) REFERENCES media_types(id),
+	FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Добавим два изображения, которые добавил Петя
+INSERT INTO media VALUES (DEFAULT, 1, 1, 'im.jpg', 100, DEFAULT);
+INSERT INTO media VALUES (DEFAULT, 1, 1, 'im1.png', 78, DEFAULT);
+-- Добавим документ, который добавил Вася
+INSERT INTO media VALUES (DEFAULT, 2, 3, 'doc.docx', 1024, DEFAULT);
+
+SELECT * FROM media;
+
+DESCRIBE media;
+
+create table post (
+	id SERIAL primary key,
+	user_id INT unsigned not null,
+	txt_post TEXT not null,
+	likes_p_id INT unsigned not null,
+	created_at DATETIME default CURRENT_TIMESTAMP,
+	update_at DATETIME default CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP
+);
+
+SELECT * FROM post;
+
+
+CREATE table likes_p (
+	id SERIAL primary key,
+	user_id INT unsigned not null,
+	post_id INT unsigned not null,
+	created_at DATETIME default CURRENT_TIMESTAMP,
+	update_at DATETIME default CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP
+);
+
+CREATE table likes_m (
+	id SERIAL primary key,
+	user_id INT unsigned not null,
+	media_id INT unsigned not null,
+	created_at DATETIME default CURRENT_TIMESTAMP,
+	update_at DATETIME default CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP
+);
+
+
+
+
+
+
